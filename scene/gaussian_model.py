@@ -454,7 +454,7 @@ class GaussianModel:
                 self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
 
                 prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
-                self.prune_points(prune_filter)
+                self.prune_points(prune_filter) #
 
     def densify_and_clone(self, grads, grad_threshold, scene_extent, max_gs):
         # Extract points that satisfy the gradient condition
