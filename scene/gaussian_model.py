@@ -420,7 +420,7 @@ class GaussianModel:
         self.denom_1 = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
-    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+    def densify_and_split(self, grads, grad_threshold, scene_extent, max_gs, N=2):
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
@@ -429,41 +429,63 @@ class GaussianModel:
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
 
-        stds = self.get_scaling[selected_pts_mask].repeat(N,1)
-        means =torch.zeros((stds.size(0), 3),device="cuda")
-        samples = torch.normal(mean=means, std=stds)
-        rots = build_rotation(self._rotation[selected_pts_mask]).repeat(N,1,1)
-        new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(N, 1)
-        new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(N,1) / (0.8*N))
-        new_rotation = self._rotation[selected_pts_mask].repeat(N,1)
-        new_features_dc = self._features_dc[selected_pts_mask].repeat(N,1,1)
-        new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)
-        new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
-        new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
+        #Num Limit(To get the greatest grad of gaussians)
+        if n_init_points < max_gs:
+            if selected_pts_mask.sum() + n_init_points > max_gs:
+                limited_num = max_gs - n_init_points
+                padded_grad[~selected_pts_mask] = 0
+                ratio = limited_num / float(n_init_points)
+                threshold = torch.quantile(padded_grad, (1.0-ratio))
+                selected_pts_mask = torch.where(padded_grad > threshold, True, False)
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
+        if selected_pts_mask.sum() > 0:
+            stds = self.get_scaling[selected_pts_mask].repeat(N,1)
+            means =torch.zeros((stds.size(0), 3),device="cuda")
+            samples = torch.normal(mean=means, std=stds)
+            rots = build_rotation(self._rotation[selected_pts_mask]).repeat(N,1,1)
+            new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(N, 1)
+            new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(N,1) / (0.8*N))
+            new_rotation = self._rotation[selected_pts_mask].repeat(N,1)
+            new_features_dc = self._features_dc[selected_pts_mask].repeat(N,1,1)
+            new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)
+            new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
+            new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
 
-        prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
-        self.prune_points(prune_filter)
+            self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
 
-    def densify_and_clone(self, grads, grad_threshold, scene_extent):
+            prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
+            self.prune_points(prune_filter)
+
+    def densify_and_clone(self, grads, grad_threshold, scene_extent, max_gs):
         # Extract points that satisfy the gradient condition
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
-        
-        new_xyz = self._xyz[selected_pts_mask]
-        new_features_dc = self._features_dc[selected_pts_mask]
-        new_features_rest = self._features_rest[selected_pts_mask]
-        new_opacities = self._opacity[selected_pts_mask]
-        new_scaling = self._scaling[selected_pts_mask]
-        new_rotation = self._rotation[selected_pts_mask]
 
-        new_tmp_radii = self.tmp_radii[selected_pts_mask]
+        #Num Limit
+        n_init_points = self.get_xyz.shape[0]
+        if n_init_points < max_gs:
+            if selected_pts_mask.sum() + n_init_points > max_gs:
+                limited_num = max_gs - n_init_points
+                grads_tmp = grads.squeeze().clone()
+                grads_tmp[~selected_pts_mask] = 0
+                ratio = limited_num / float(n_init_points)
+                threshold = torch.quantile(grads_tmp, (1.0 - ratio))
+                selected_pts_mask = torch.where(grads_tmp > threshold, True, False)
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+        if selected_pts_mask.sum() > 0:
+            new_xyz = self._xyz[selected_pts_mask]
+            new_features_dc = self._features_dc[selected_pts_mask]
+            new_features_rest = self._features_rest[selected_pts_mask]
+            new_opacities = self._opacity[selected_pts_mask]
+            new_scaling = self._scaling[selected_pts_mask]
+            new_rotation = self._rotation[selected_pts_mask]
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii):
+            new_tmp_radii = self.tmp_radii[selected_pts_mask]
+
+            self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii, max_gs):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
@@ -471,8 +493,8 @@ class GaussianModel:
         grads_1[grads_1.isnan()] = 0.0
 
         self.tmp_radii = radii
-        self.densify_and_clone(grads_1, max_grad, extent)
-        self.densify_and_split(grads, max_grad, extent)
+        self.densify_and_clone(grads_1, max_grad, extent, max_gs)
+        self.densify_and_split(grads, max_grad, extent, max_gs)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
