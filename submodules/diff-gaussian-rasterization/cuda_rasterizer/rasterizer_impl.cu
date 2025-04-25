@@ -217,6 +217,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	float* pixels,
+	float* maxPixelAttribute,
 	float* depth,
 	bool antialiasing,
 	int* radii,
@@ -336,6 +337,7 @@ int CudaRasterizer::Rasterizer::forward(
 		background,
 		out_color,
 		pixels,
+		maxPixelAttribute,
 		geomState.depths,
 		depth), debug)
 

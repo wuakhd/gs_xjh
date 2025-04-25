@@ -62,6 +62,7 @@ class GaussianModel:
         self.xyz_gradient_accum_1 = torch.empty(0)
         self.denom = torch.empty(0)
         self.denom_1 = torch.empty(0)
+        self.maxAttribution = torch.empty(0)   # record max pixel attribution for per gaussian
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
@@ -81,6 +82,7 @@ class GaussianModel:
             self.xyz_gradient_accum_1,
             self.denom,
             self.denom_1,
+            self.maxAttribution,
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
         )
@@ -98,6 +100,7 @@ class GaussianModel:
         xyz_gradient_accum_1, 
         denom,
         denom_1,
+        maxAttribution,
         opt_dict, 
         self.spatial_lr_scale) = model_args
         self.training_setup(training_args)
@@ -189,6 +192,7 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.xyz_gradient_accum_1 = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom_1 = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.maxAttribution = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
         l = [
             {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
@@ -372,6 +376,9 @@ class GaussianModel:
 
         self.denom = self.denom[valid_points_mask]
         self.denom_1 = self.denom_1[valid_points_mask]
+
+        self.maxAttribution = self.maxAttribution[valid_points_mask]
+
         self.max_radii2D = self.max_radii2D[valid_points_mask]
         self.tmp_radii = self.tmp_radii[valid_points_mask]
 
@@ -397,7 +404,7 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii, new_maxAtt):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -418,6 +425,7 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.xyz_gradient_accum_1 = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom_1 = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.maxAttribution = torch.cat((self.maxAttribution, new_maxAtt))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, max_gs, N=2):
@@ -451,7 +459,9 @@ class GaussianModel:
                 new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
                 new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
 
-                self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
+                new_maxAtt = self.maxAttribution[selected_pts_mask].repeat(N, 1)
+
+                self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii, new_maxAtt)
 
                 prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
                 self.prune_points(prune_filter) #
@@ -483,7 +493,9 @@ class GaussianModel:
 
                 new_tmp_radii = self.tmp_radii[selected_pts_mask]
 
-                self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+                new_maxAtt = self.maxAttribution[selected_pts_mask]
+
+                self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii, new_maxAtt)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii, max_gs):
         grads = self.xyz_gradient_accum / self.denom
@@ -496,7 +508,10 @@ class GaussianModel:
         self.densify_and_clone(grads_1, max_grad, extent, max_gs)
         self.densify_and_split(grads, max_grad, extent, max_gs)
 
-        prune_mask = (self.get_opacity < min_opacity).squeeze()
+        attribution_for_pruning = torch.where(self.maxAttribution != 0, torch.min(self.get_opacity, self.maxAttribution), self.get_opacity)
+
+        #prune_mask = (self.get_opacity < min_opacity).squeeze()
+        prune_mask = (attribution_for_pruning < min_opacity).squeeze()
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
@@ -504,11 +519,13 @@ class GaussianModel:
         self.prune_points(prune_mask)
         tmp_radii = self.tmp_radii
         self.tmp_radii = None
+        self.maxAttribution = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
         torch.cuda.empty_cache()
 
-    def add_densification_stats(self, viewspace_point_tensor, update_filter,pixels):
+    def add_densification_stats(self, viewspace_point_tensor, update_filter, pixels, maxAttribution):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)* pixels[update_filter]
         self.denom[update_filter] += pixels[update_filter]
         self.xyz_gradient_accum_1[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom_1[update_filter] += 1
+        self.maxAttribution[update_filter] = torch.max(self.maxAttribution[update_filter], maxAttribution[update_filter])

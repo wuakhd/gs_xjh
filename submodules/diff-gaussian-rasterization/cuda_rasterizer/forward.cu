@@ -15,6 +15,13 @@
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 
+__device__ float atomicMaxFloat(float* address, float val) {
+    unsigned int old = __float_as_uint(*address);
+    unsigned int new_val = __float_as_uint(val);
+    unsigned int result = atomicMax((unsigned int*)address, new_val);
+    return __uint_as_float(result);
+}
+
 // Forward method for converting the input spherical harmonics
 // coefficients of each Gaussian to a simple RGB color.
 __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, bool* clamped)
@@ -285,6 +292,7 @@ renderCUDA(
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
 	float* __restrict__ pixels,
+	float* __restrict__ maxPixelAttribute,
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth)
 {
@@ -375,7 +383,8 @@ renderCUDA(
 			if(invdepth)
 			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
 
-			atomicAdd(&(pixels[collected_id[j]]), T * alpha);  //pixels add with alpha And T
+			atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);//pixels add alpha * T
+			atomicMaxFloat(&(maxPixelAttribute[collected_id[j]]), alpha * T);
 
 			T = test_T;
 
@@ -384,7 +393,6 @@ renderCUDA(
 			last_contributor = contributor;
 
 			//atomicAdd(&(pixels[collected_id[j]]), 1.0f);//pixels add
-
 		}
 	}
 
@@ -415,6 +423,7 @@ void FORWARD::render(
 	const float* bg_color,
 	float* out_color,
 	float* pixels,
+	float* maxPixelAttribute,
 	float* depths,
 	float* depth)
 {
@@ -430,6 +439,7 @@ void FORWARD::render(
 		bg_color,
 		out_color,
 		pixels,
+		maxPixelAttribute,
 		depths, 
 		depth);
 }
