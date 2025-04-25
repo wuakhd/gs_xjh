@@ -493,7 +493,7 @@ class GaussianModel:
         grads_1[grads_1.isnan()] = 0.0
 
         self.tmp_radii = radii
-        self.densify_and_clone(grads_1, max_grad, extent, max_gs)
+        self.densify_and_clone(grads, max_grad, extent, max_gs)
         self.densify_and_split(grads, max_grad, extent, max_gs)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
