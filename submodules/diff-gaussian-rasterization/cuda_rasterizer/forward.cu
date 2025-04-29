@@ -375,7 +375,7 @@ renderCUDA(
 			if(invdepth)
 			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
 
-			atomicAdd(&(pixels[collected_id[j]]), T * alpha *depths[collected_id[j]]/100.0f * depths[collected_id[j]]/ 100.0f);  //pixels add with alpha And T
+			atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);  //pixels add with alpha And T
 
 			T = test_T;
 
