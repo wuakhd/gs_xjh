@@ -510,8 +510,12 @@ class GaussianModel:
 
         attribution_for_pruning = torch.where(self.maxAttribution != 0, torch.min(self.get_opacity, self.maxAttribution), self.get_opacity)
 
+        #adjust
+        att_and_opa = min_opacity*self.get_opacity + (1-min_opacity)*attribution_for_pruning
+
         #prune_mask = (self.get_opacity < min_opacity).squeeze()
-        prune_mask = (attribution_for_pruning < min_opacity).squeeze()
+        #prune_mask = (attribution_for_pruning < min_opacity).squeeze()
+        prune_mask = (att_and_opa < min_opacity).squeeze()
         if max_screen_size:
             big_points_vs = self.max_radii2D > max_screen_size
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
