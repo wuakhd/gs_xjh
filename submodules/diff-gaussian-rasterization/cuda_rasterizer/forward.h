@@ -64,6 +64,7 @@ namespace FORWARD
 		float* pixels,
 		float* maxPixelAttribute,
 		float* depths,
+		float* invdepth,
 		float* depth);
 }
 

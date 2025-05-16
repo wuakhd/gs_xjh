@@ -218,6 +218,7 @@ int CudaRasterizer::Rasterizer::forward(
 	float* out_color,
 	float* pixels,
 	float* maxPixelAttribute,
+	float* invdepth,
 	float* depth,
 	bool antialiasing,
 	int* radii,
@@ -339,6 +340,7 @@ int CudaRasterizer::Rasterizer::forward(
 		pixels,
 		maxPixelAttribute,
 		geomState.depths,
+		invdepth,
 		depth), debug)
 
 	return num_rendered;

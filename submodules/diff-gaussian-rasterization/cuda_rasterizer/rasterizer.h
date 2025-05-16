@@ -51,6 +51,7 @@ namespace CudaRasterizer
 			float* out_color,
 			float* pixels,
 			float* maxPixelAttribute,
+			float* invdepth,
 			float* depth,
 			bool antialiasing,
 			int* radii = nullptr,

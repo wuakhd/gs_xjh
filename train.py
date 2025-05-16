@@ -139,6 +139,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         else:
             Ll1depth = 0
 
+        depth_and_invdepth = iteration > 1000
+        if depth_l1_weight(iteration - 1000) > 0 and depth_and_invdepth:
+            invDepth = render_pkg["invdepth"]
+            depth = render_pkg["depth"]
+
+            L1_depth_and_invdepth = torch.abs(invDepth - depth).mean()
+            L1_depth_and_invdepth = depth_l1_weight(iteration - 1000) * L1_depth_and_invdepth
+            loss += L1_depth_and_invdepth
+            L1_depth_and_invdepth = L1_depth_and_invdepth.item()
+        else:
+            L1_depth_and_invdepth = 0
+
         loss.backward()
 
         iter_end.record()

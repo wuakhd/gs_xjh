@@ -294,7 +294,8 @@ renderCUDA(
 	float* __restrict__ pixels,
 	float* __restrict__ maxPixelAttribute,
 	const float* __restrict__ depths,
-	float* __restrict__ invdepth)
+	float* __restrict__ invdepth,
+	float* __restrict__ depth)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -327,6 +328,7 @@ renderCUDA(
 	float C[CHANNELS] = { 0 };
 
 	float expected_invdepth = 0.0f;
+	float expected_depth = 0.0f;
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -382,8 +384,9 @@ renderCUDA(
 
 			if(invdepth)
 			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
+			expected_depth +=  depths[collected_id[j]] * alpha * T;
 
-			atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);//pixels add alpha * T
+			atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);//pixels add
 			atomicMaxFloat(&(maxPixelAttribute[collected_id[j]]), alpha * T);
 
 			T = test_T;
@@ -407,6 +410,7 @@ renderCUDA(
 
 		if (invdepth)
 		invdepth[pix_id] = expected_invdepth;// 1. / (expected_depth + T * 1e3);
+		depth[pix_id] = expected_depth;
 	}
 }
 
@@ -425,6 +429,7 @@ void FORWARD::render(
 	float* pixels,
 	float* maxPixelAttribute,
 	float* depths,
+	float* invdepth,
 	float* depth)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
@@ -441,6 +446,7 @@ void FORWARD::render(
 		pixels,
 		maxPixelAttribute,
 		depths, 
+		invdepth,
 		depth);
 }
 
