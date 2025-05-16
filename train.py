@@ -149,7 +149,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             loss += L1_depth_and_invdepth
             L1_depth_and_invdepth = L1_depth_and_invdepth.item()
         else:
-            L1_depth_and_invdepth = 0
+            L1_depth_and_invdepth = 0.0
 
         loss.backward()
 
