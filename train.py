@@ -163,8 +163,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}",
                                           "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}",
-                                          "Points": f"{len(gaussians.get_xyz)}"},
-                                          "Depth Weight:f"{depth_l1_weight(iteration)}")
+                                          "Points": f"{len(gaussians.get_xyz)}",
+                                          "Depth Weight":f"{depth_l1_weight(iteration)}"})
                 progress_bar.update(10)
             if iteration == opt.iterations:
                 progress_bar.close()
