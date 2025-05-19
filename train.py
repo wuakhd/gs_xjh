@@ -139,13 +139,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         else:
             Ll1depth = 0
 
-        depth_and_invdepth = iteration > 1000
-        if depth_l1_weight(iteration - 1000) > 0 and depth_and_invdepth:
+        depth_and_invdepth = iteration > 5000
+        if depth_l1_weight(iteration) > 0 and depth_and_invdepth:
             invDepth = render_pkg["invdepth"]
             depth = render_pkg["depth"]
 
             L1_depth_and_invdepth = torch.abs(invDepth - depth).mean()
-            L1_depth_and_invdepth = depth_l1_weight(iteration - 1000) * L1_depth_and_invdepth
+            L1_depth_and_invdepth = depth_l1_weight(iteration) * L1_depth_and_invdepth
             loss += L1_depth_and_invdepth
             L1_depth_and_invdepth = L1_depth_and_invdepth.item()
         else:
@@ -163,7 +163,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}",
                                           "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}",
-                                          "Points": f"{len(gaussians.get_xyz)}"})
+                                          "Points": f"{len(gaussians.get_xyz)}"},
+                                          "Depth Weight:f"{depth_l1_weight(iteration)}")
                 progress_bar.update(10)
             if iteration == opt.iterations:
                 progress_bar.close()
