@@ -386,7 +386,7 @@ renderCUDA(
 			expected_invdepth += (1 / depths[collected_id[j]]) * alpha * T;
 			expected_depth +=  depths[collected_id[j]] * alpha * T;
 
-			atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);//pixels add
+			//atomicAdd(&(pixels[collected_id[j]]), depths[collected_id[j]]);//pixels add
 			atomicMaxFloat(&(maxPixelAttribute[collected_id[j]]), alpha * T);
 
 			T = test_T;
@@ -396,10 +396,6 @@ renderCUDA(
 			last_contributor = contributor;
 
 			//atomicAdd(&(pixels[collected_id[j]]), 1.0f);//pixels add
-		}
-		for(int j = last_contributor-1; j>=0; j--){
-			float distance = expected_depth - depths[collected_id[j]];  //后面的要增加，前面的要降低（2*depth-expect_depth)
-			atomicAdd(&(pixels[collected_id[j]]), -distance);
 		}
 	}
 
@@ -415,6 +411,12 @@ renderCUDA(
 		if (invdepth)
 		invdepth[pix_id] = expected_invdepth;// 1. / (expected_depth + T * 1e3);
 		depth[pix_id] = expected_depth;
+		for(int j=last_contributor-1;j>=0;j--){
+			int gs_id = point_list[range.x + j];
+			float distance = 2.0f*depths[gs_id]-expected_depth;
+			if(distance<=0.0f) distance=0.0001f;
+			atomicAdd(&(pixels[gs_id]), distance);//pixels add
+		}
 	}
 }
 
