@@ -397,6 +397,10 @@ renderCUDA(
 
 			//atomicAdd(&(pixels[collected_id[j]]), 1.0f);//pixels add
 		}
+		for(int j = last_contributor-1; j>=0; j--){
+			float distance = expected_depth - depths[collected_id[j]];  //后面的要增加，前面的要降低（2*depth-expect_depth)
+			atomicAdd(&(pixels[collected_id[j]]), -distance);
+		}
 	}
 
 	// All threads that treat valid pixel write out their final
